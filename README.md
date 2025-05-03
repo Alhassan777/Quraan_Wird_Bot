@@ -1,6 +1,6 @@
 # Quraan Werd Tracker Bot
 
-A production-ready Telegram bot for tracking daily Quraan reading (Werd) with streak calculations and personalized reminders.
+A production-ready Telegram bot for tracking daily Quraan reading (Werd) with streak calculations and personalized reminders. You can access the bot here @WirdiBOt
 
 ## Features
 
