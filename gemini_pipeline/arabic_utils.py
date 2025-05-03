@@ -52,8 +52,8 @@ def normalize_arabic_text(text):
     # Normalize different forms of Alef
     text = re.sub('[أإآ]', 'ا', text)
     
-    # Remove non-Arabic characters (keeping spaces and numbers)
-    text = re.sub(r'[^\u0600-\u06FF\s0-9]', '', text)
+    # Remove non-Arabic characters (keeping spaces and numbers and colons for verse references)
+    text = re.sub(r'[^\u0600-\u06FF\s0-9:.]', '', text)
     
     # Remove extra spaces
     text = re.sub(r'\s+', ' ', text).strip()
@@ -69,12 +69,15 @@ def extract_quran_reference(text):
         text (str): Text containing potential Quran reference
         
     Returns:
-        tuple: (surah_number, ayah_number) or None if not found
+        dict: Dictionary with surah_number and ayah_number or None if not found
     """
     # Look for the format "X:Y" (Surah:Ayah)
     match = re.search(r'(\d+)[:\-](\d+)', text)
     if match:
-        return int(match.group(1)), int(match.group(2))
+        return {
+            'surah_number': int(match.group(1)),
+            'ayah_number': int(match.group(2))
+        }
     
     # More advanced extraction logic can be added here
     
