@@ -1,40 +1,61 @@
 # Quraan Werd Tracker Bot
 
-A production-ready Telegram bot for tracking daily Quraan reading (Werd) with streak calculations and reminders.
-
-You will find it at t.me/WirdiBOt.
+A production-ready Telegram bot for tracking daily Quraan reading (Werd) with streak calculations and personalized reminders.
 
 ## Features
 
-- Track daily Quraan reading completions with checkmark emoji (✅ or ✔️)
-- Calculate and maintain user streaks
-- Group dashboard to view all participants' streaks
-- Anti-spam: ignores duplicate checkmarks in the same 24-hour window
-- Admin-only group settings
-- Daily reminders with inspirational Quraan quotes
-- Missed streak reminders sent privately
-- Timezone support (defaulting to PT/America/Los_Angeles)
-- PostgreSQL database for scalable data storage
-- Redis caching for improved performance
-- Prometheus metrics for monitoring
-- Containerized with Docker for easy deployment
-- Horizontal scaling capability
+- Track daily Quraan reading completions with various checkmark emojis (✅, ✔️, ✓, ☑️, and others)
+- Cross-platform emoji support for compatibility across all devices
+- Calculate and maintain user reading streaks
+- Support for reverse streaks to track continuous reading
+- Multi-language support (English and Arabic)
+- Personalized reminders with inspirational Quraan quotes
+- Missed streak reminders
+- Timezone support (defaulting to America/Los_Angeles)
+- Supabase PostgreSQL database integration
+- Monitoring with metrics tracking
 
-## Production Architecture
+## Supported Check Mark Symbols
+
+The bot recognizes multiple forms of check mark symbols across different platforms:
+
+- ✅ White Heavy Check Mark
+- ✔️ Heavy Check Mark (with variation selector)
+- ✔ Heavy Check Mark (without variation selector)
+- ✓ Check Mark
+- ☑️ Ballot Box with Check (with variation selector)
+- ☑ Ballot Box with Check (without variation selector)
+- 🗸 Light Check Mark
+
+This ensures users can mark their daily Quraan reading regardless of their device.
+
+## Architecture
 
 This application uses a modern, scalable architecture:
 
-- **PostgreSQL**: For persistent data storage
-- **Redis**: For caching frequently accessed data
-- **Prometheus & Grafana**: For monitoring and metrics
-- **Docker & Docker Compose**: For containerization and orchestration
+- **Supabase**: Provides PostgreSQL database and authentication
+- **Python Telegram Bot**: For Telegram API integration
+- **Docker**: For containerization and easy deployment
+
+## Database Structure
+
+The bot uses the following database tables:
+
+- **users**: Stores user information, language preferences, and timezones
+- **streaks**: Tracks current streak, reverse streak, and last check-in
+- **check_ins**: Records individual reading check-ins
+- **message_templates**: Stores motivational messages and reminders
+- **reminders**: Manages user reminder settings
 
 ## Requirements
 
-- Docker and Docker Compose
+- Python 3.9+
 - Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
+- Supabase account and project
 
-## Quick Start with Docker Compose
+## Setup
+
+### Local Development
 
 1. Clone the repository:
    ```bash
@@ -42,76 +63,79 @@ This application uses a modern, scalable architecture:
    cd quraan-werd-tracker
    ```
 
-2. Create a `.env` file with your configuration:
-   ```
-   TELEGRAM_TOKEN=your_telegram_bot_token
-   DATABASE_URL=postgresql://postgres:postgres@postgres:5432/werd_tracker
-   REDIS_URL=redis://redis:6379/0
-   ```
-
-3. Start the services:
+2. Create a virtual environment:
    ```bash
-   docker-compose up -d
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-This will start the bot along with PostgreSQL, Redis, Prometheus, and Grafana.
-
-## Manual Setup
-
-If you prefer to run components separately:
-
-1. Install dependencies:
+3. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Set up PostgreSQL:
-   ```bash
-   # Create database
-   createdb werd_tracker
+4. Create a `.env` file with your configuration:
+   ```
+   TELEGRAM_TOKEN=your_telegram_bot_token
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_KEY=your_supabase_key
+   LOG_LEVEL=INFO
    ```
 
-3. Set up Redis:
+5. Initialize the database:
    ```bash
-   # Start Redis server
-   redis-server
+   python -m bot.database.create_tables
    ```
 
-4. Configure environment variables:
+6. Run the bot:
    ```bash
-   export TELEGRAM_TOKEN=your_telegram_bot_token
-   export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/werd_tracker
-   export REDIS_URL=redis://localhost:6379/0
+   python -m bot.main
    ```
 
-5. Run the bot:
+### Railway Deployment
+
+1. Create a Railway account at [railway.app](https://railway.app)
+
+2. Install the Railway CLI:
    ```bash
-   python bot.py
+   npm i -g @railway/cli
+   ```
+   
+3. Login to Railway:
+   ```bash
+   railway login
+   ```
+
+4. Link your project:
+   ```bash
+   railway link
+   ```
+
+5. Set environment variables:
+   ```bash
+   railway variables set TELEGRAM_TOKEN=your_telegram_bot_token
+   railway variables set SUPABASE_URL=your_supabase_url
+   railway variables set SUPABASE_KEY=your_supabase_key
+   railway variables set LOG_LEVEL=INFO
+   ```
+
+6. Deploy your app:
+   ```bash
+   railway up
    ```
 
 ## Bot Commands
 
-- `/start` - Start the bot
+- `/start` - Start the bot and select language
 - `/help` - Get help information
 - `/streak` - View your current streak
-- `/dashboard` - View the group dashboard (in groups)
-- `/settimezone` - Set your timezone (defaults to PT)
-- `/setreminder` - Set daily reminders
-
-## Monitoring
-
-- Prometheus metrics are available at http://localhost:9090
-- Grafana dashboards are available at http://localhost:3000
-
-## Scaling for Production
-
-The application is designed to scale horizontally:
-
-1. Deploy multiple instances behind a load balancer
-2. Use a managed PostgreSQL service (AWS RDS, Google Cloud SQL)
-3. Use a managed Redis service (AWS ElastiCache, Google Cloud Memorystore)
-4. Set up proper monitoring and alerting
+- `/settimezone` - Set your timezone (defaults to America/Los_Angeles)
+- `/setreminder` - Configure daily reminders
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. 
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+[MIT License](LICENSE) 
