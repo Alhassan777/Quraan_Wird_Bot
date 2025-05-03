@@ -1,1 +1,1 @@
-web: python -m bot.main 
+web: /opt/venv/bin/python -m bot.main 

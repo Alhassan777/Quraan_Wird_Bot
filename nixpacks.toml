@@ -3,10 +3,10 @@ nixPkgs = ["gcc", "postgresql", "python39", "python39Packages.virtualenv", "pkg-
 
 [phases.install]
 cmds = [
-  "virtualenv venv",
-  "venv/bin/pip install --upgrade pip",
-  "venv/bin/pip install -r requirements.txt"
+  "virtualenv /opt/venv",
+  "/opt/venv/bin/pip install --upgrade pip",
+  "/opt/venv/bin/pip install -r requirements.txt"
 ]
 
 [start]
-cmd = "venv/bin/python -m bot.main" 
+cmd = "/opt/venv/bin/python -m bot.main" 
