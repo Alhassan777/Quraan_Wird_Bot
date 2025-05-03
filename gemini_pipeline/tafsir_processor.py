@@ -28,7 +28,7 @@ def identify_quran_verse(verse_text):
     Use Gemini API to identify the Quran verse from text input.
     
     Args:
-        verse_text (str): Arabic text of the Quran verse
+        verse_text (str): Arabic text of the Quran verse or reference (e.g., "2:255")
         
     Returns:
         dict: Information about the verse including surah, ayah, and normalized text
@@ -41,6 +41,21 @@ def identify_quran_verse(verse_text):
     
     # Check if the text contains a reference (like 2:255)
     reference = extract_quran_reference(normalized_text)
+    
+    # If we have a direct reference, use it instead of calling the API
+    if reference and reference.get('surah_number') and reference.get('ayah_number'):
+        # Get surah names (could be expanded to use a lookup table for accuracy)
+        surah_names = get_surah_name_from_api(reference['surah_number'])
+        
+        return {
+            'surah_number': reference['surah_number'],
+            'ayah_number': reference['ayah_number'],
+            'surah_name_arabic': surah_names.get('arabic', ''),
+            'surah_name_english': surah_names.get('english', ''),
+            'match_confidence': 100,  # High confidence for direct reference
+            'normalized_text': normalized_text,
+            'is_quran_verse': True
+        }
     
     try:
         url = get_gemini_api_url(GEMINI_MODEL)
@@ -187,6 +202,71 @@ def identify_quran_verse(verse_text):
         validation_text = None
         gc.collect()
 
+def get_surah_name_from_api(surah_number):
+    """
+    Get the Surah name in Arabic and English for a given Surah number.
+    Uses Gemini API to retrieve the information.
+    
+    Args:
+        surah_number (int): The Surah number
+        
+    Returns:
+        dict: Containing the Arabic and English names of the Surah
+    """
+    url = get_gemini_api_url(GEMINI_MODEL)
+    headers = get_gemini_headers()
+    
+    prompt = f"""
+    Provide the name of Surah number {surah_number} in the Quran.
+    Return only the result in the following JSON format:
+    {{
+      "arabic": "<surah name in Arabic>",
+      "english": "<surah name in English>"
+    }}
+    """
+    
+    data = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.1,
+            "topK": 32,
+            "topP": 1,
+            "maxOutputTokens": 500,
+        }
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code != 200:
+            # Fallback values if API call fails
+            return {"arabic": "", "english": f"Surah {surah_number}"}
+        
+        result = response.json()
+        response_text = result['candidates'][0]['content']['parts'][0]['text']
+        
+        # Extract the JSON part from the response
+        json_match = re.search(r'(\{.*\})', response_text, re.DOTALL)
+        if json_match:
+            surah_info = json.loads(json_match.group(1))
+            return surah_info
+        else:
+            # Fallback values if JSON parsing fails
+            return {"arabic": "", "english": f"Surah {surah_number}"}
+            
+    except Exception:
+        # Fallback values if any exception occurs
+        return {"arabic": "", "english": f"Surah {surah_number}"}
+    finally:
+        response = None
+        result = None
+        response_text = None
+        gc.collect()
+
 def summarize_tafsir_content(tafsir_content, verse_info, language="en"):
     """
     Use Gemini API to summarize and condense the tafsir content into a unified explanation
@@ -202,7 +282,7 @@ def summarize_tafsir_content(tafsir_content, verse_info, language="en"):
         prompt = f'''
 أنت باحث متخصص في علم التفسير، ومتمرس في تبسيط المعاني العميقة بأسلوب روحاني، مؤثر، وواضح لغير المتخصصين.
 
-سيُقدَّم لك الآن محتوى من تفاسير كبار العلماء للآية {verse_info['surah_number']}:{verse_info['ayah_number']} ({verse_info['surah_name_arabic']} - {verse_info['surah_name_english']}). مهمتك هي تلخيص هذه التفاسير في **شرح موحد ومترابط**، مع الحفاظ على **تعدّد الآراء التفسيرية** وذكرها **بنَسَقٍ متّزن**.
+سيُقدَّم لك الآن محتوى من تفاسير كبار العلماء للآية {verse_info['surah_number']}:{verse_info['ayah_number']} ({verse_info['surah_name_arabic']} - {verse_info['surah_name_english']}). مهمتك هي تلخيص هذه التفاسير في **شرح موحد ومترابط**، مع الحفاظ على **تعدّد الآراء التفسيرية** وذكرها **بنَسَقٍ متّزن**.
 
 ## تعليمات الإخراج:
 
@@ -236,7 +316,7 @@ def summarize_tafsir_content(tafsir_content, verse_info, language="en"):
 """
         '''
     else:
-        pprompt = f'''
+        prompt = f'''
 You are a specialist in Qur'anic exegesis and a skilled communicator who can distill profound meanings in a spiritual, engaging, and accessible style for non‑experts.
 
 You will receive excerpts from classical tafsirs on verse {verse_info['surah_number']}:{verse_info['ayah_number']} ({verse_info['surah_name_arabic']} – {verse_info['surah_name_english']}). Your task is to craft **one unified explanation** that preserves the **full range of scholarly opinions** while presenting them in clear, respectful English.
