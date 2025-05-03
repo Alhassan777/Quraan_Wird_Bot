@@ -1,12 +1,12 @@
 [phases.setup]
-nixPkgs = ["gcc", "postgresql", "python39", "python39Packages.pip", "pkg-config"]
+nixPkgs = ["gcc", "postgresql", "python39", "python39Packages.virtualenv", "pkg-config"]
 
 [phases.install]
 cmds = [
-  "python -m ensurepip --upgrade",
-  "python -m pip install --upgrade pip",
-  "pip install -r requirements.txt"
+  "virtualenv venv",
+  "venv/bin/pip install --upgrade pip",
+  "venv/bin/pip install -r requirements.txt"
 ]
 
 [start]
-cmd = "python -m bot.main" 
+cmd = "venv/bin/python -m bot.main" 
