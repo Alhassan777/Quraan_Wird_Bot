@@ -1,7 +1,8 @@
 from datetime import datetime, time
 from typing import List, Dict, Optional
-from streak_counter.streak_counter import StreakCounter
+from bot.streak_counter.streak_counter import StreakCounter
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,19 @@ class ReminderManager:
         # Get reminder times from database
         reminder_times = user_data.get("reminder_times", [])
         
+        # Handle case when reminder_times is a string
+        if isinstance(reminder_times, str):
+            try:
+                # Try to convert from JSON string if it's serialized
+                reminder_times = json.loads(reminder_times)
+            except json.JSONDecodeError:
+                # If not a valid JSON, treat as a single item list
+                reminder_times = [reminder_times]
+        
+        # Ensure it's a list
+        if not isinstance(reminder_times, list):
+            reminder_times = [reminder_times] if reminder_times else []
+        
         # If no times are set, convert default times to strings
         if not reminder_times:
             reminder_times = [t.strftime("%H:%M") for t in self.reminder_times]
@@ -192,6 +206,19 @@ class ReminderManager:
             # Get existing reminder times
             user_data = streak_counter.db_manager.get_or_create_user(user_id, "")
             reminder_times = user_data.get("reminder_times", [])
+            
+            # Handle case when reminder_times is a string
+            if isinstance(reminder_times, str):
+                try:
+                    # Try to convert from JSON string if it's serialized
+                    reminder_times = json.loads(reminder_times)
+                except json.JSONDecodeError:
+                    # If not a valid JSON, treat as a single item list
+                    reminder_times = [reminder_times]
+            
+            # Ensure it's a list
+            if not isinstance(reminder_times, list):
+                reminder_times = [reminder_times] if reminder_times else []
             
             # Convert reminder_time to string format
             time_str = reminder_time.strftime("%H:%M")

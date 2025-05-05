@@ -132,16 +132,40 @@ class DatabaseManager:
         
         Randomly selects from all matching templates to provide variety.
         """
-        response = self.supabase.table(MESSAGE_TEMPLATES_TABLE)\
-            .select("*")\
-            .eq("template_type", template_type)\
-            .eq("threshold_days", threshold_days)\
-            .execute()
-        
-        if response.data:
-            # Randomly select a message from matching templates
-            return random.choice(response.data)
-        return None
+        try:
+            response = self.supabase.table(MESSAGE_TEMPLATES_TABLE)\
+                .select("*")\
+                .eq("template_type", template_type)\
+                .eq("threshold_days", threshold_days)\
+                .execute()
+            
+            if response.data:
+                # Randomly select a message from matching templates
+                template = random.choice(response.data)
+                logger.debug(f"Found template for {template_type} and {threshold_days} days")
+                return template
+                
+            # If no template found for the exact threshold, try to find any template of the same type
+            logger.warning(f"No template found for {template_type} with threshold_days={threshold_days}. Trying any threshold.")
+            
+            fallback_response = self.supabase.table(MESSAGE_TEMPLATES_TABLE)\
+                .select("*")\
+                .eq("template_type", template_type)\
+                .execute()
+                
+            if fallback_response.data:
+                # Randomly select from any template of the same type
+                template = random.choice(fallback_response.data)
+                logger.debug(f"Using fallback template for {template_type}")
+                return template
+                
+            # If still no template, log and return None
+            logger.warning(f"No {template_type} templates found in the database.")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error retrieving message template: {str(e)}")
+            return None
 
     def get_random_daily_reminder(self, language: str = 'en') -> str:
         """

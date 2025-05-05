@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, List, Dict
-from config.config import CHECK_MARKS
-from database.db_manager import DatabaseManager
+from bot.config.config import CHECK_MARKS
+from bot.database.db_manager import DatabaseManager
 
 class StreakCounter:
     def __init__(self, telegram_id: int = None, username: str = ""):
@@ -198,49 +198,120 @@ class StreakCounter:
                 else:  # Default to English
                     header = "📚 *Start your reading streak today!*\n\n"
             
-        if current_streak > 0:
-            # Using reward templates
-            threshold = self.get_appropriate_threshold(current_streak, True)
-            message_field = "message_english_translation" if language == 'en' else "message_arabic_translation"
-            text_field = "text_used_english" if language == 'en' else "text_used_arabic"
+        try:
+            if current_streak > 0:
+                # Using reward templates
+                threshold = self.get_appropriate_threshold(current_streak, True)
+                
+                template = self.db_manager.get_message_template(
+                    template_type="reward",
+                    threshold_days=threshold
+                )
+                
+                if not template:
+                    # Fallback if no template found
+                    if language == 'en':
+                        return f"{header}Amazing! You've maintained your Quran reading streak for {current_streak} days! 🎉"
+                    else:
+                        return f"{header}رائع! لقد حافظت على سلسلة قراءة القرآن لمدة {current_streak} أيام! 🎉"
+                
+                # Try to get message fields, with fallbacks if fields don't exist
+                text = ""
+                message = ""
+                
+                # Get text field
+                if language == 'en':
+                    text = template.get("text_used_english", "")
+                else:
+                    text = template.get("text_used_arabic", "")
+                
+                # Get message field
+                if language == 'en':
+                    message = template.get("message_english_translation", "")
+                    if not message:
+                        message = "Keep up your daily Quran reading streak! Every day brings you closer to Allah."
+                else:
+                    message = template.get("message_arabic_translation", "")
+                    if not message:
+                        message = "حافظ على سلسلة قراءة القرآن اليومية! كل يوم يقربك من الله."
+                
+                return f"{header}{text}\n\n{message}"
+                
+            elif reverse_streak > 0:
+                # Using warning templates
+                threshold = self.get_appropriate_threshold(reverse_streak, False)
+                
+                template = self.db_manager.get_message_template(
+                    template_type="warning",
+                    threshold_days=threshold
+                )
+                
+                if not template:
+                    # Fallback if no template found
+                    if language == 'en':
+                        return f"{header}Don't worry! It's been {reverse_streak} days since your last check-in. You can start again today! 📖"
+                    else:
+                        return f"{header}لا تقلق! لقد مرت {reverse_streak} أيام منذ آخر تسجيل دخول. يمكنك البدء مرة أخرى اليوم! 📖"
+                
+                # Try to get message fields, with fallbacks if fields don't exist
+                text = ""
+                message = ""
+                
+                # Get text field
+                if language == 'en':
+                    text = template.get("text_used_english", "")
+                else:
+                    text = template.get("text_used_arabic", "")
+                
+                # Get message field
+                if language == 'en':
+                    message = template.get("message_english_translation", "")
+                    if not message:
+                        message = f"It's been {reverse_streak} days since your last Quran reading. Resume your journey today!"
+                else:
+                    message = template.get("message_arabic_translation", "")
+                    if not message:
+                        message = f"لقد مضت {reverse_streak} أيام منذ آخر قراءة للقرآن. استأنف رحلتك اليوم!"
+                
+                # If we have both text and message, return them
+                if text and message:
+                    return f"{header}{text}\n\n{message}"
+                # If we only have text, just return that with the header
+                elif text:
+                    return f"{header}{text}"
+                # If we only have message, just return that with the header
+                elif message:
+                    return f"{header}{message}"
+                # If we have neither, return a fallback message
+                else:
+                    if language == 'en':
+                        return f"{header}Don't worry! It's been {reverse_streak} days since your last check-in. You can start again today! 📖"
+                    else:
+                        return f"{header}لا تقلق! لقد مرت {reverse_streak} أيام منذ آخر تسجيل دخول. يمكنك البدء مرة أخرى اليوم! 📖"
+            else:
+                # Default message for new users
+                if language == 'en':
+                    return f"{header}Ready to start your Quran reading journey? Send a checkmark when you're done! 📚"
+                else:
+                    return f"{header}هل أنت مستعد لبدء رحلة قراءة القرآن؟ أرسل علامة اختيار عندما تنتهي! 📚"
+        except Exception as e:
+            # If anything goes wrong, return a simple fallback message
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generating streak message: {str(e)}")
             
-            template = self.db_manager.get_message_template(
-                template_type="reward",
-                threshold_days=threshold
-            )
-            
-            if not template:
-                # Fallback if no template found
+            if current_streak > 0:
                 if language == 'en':
                     return f"{header}Amazing! You've maintained your Quran reading streak for {current_streak} days! 🎉"
                 else:
                     return f"{header}رائع! لقد حافظت على سلسلة قراءة القرآن لمدة {current_streak} أيام! 🎉"
-            
-            return f"{header}{template[text_field]}\n\n{template[message_field]}"
-            
-        elif reverse_streak > 0:
-            # Using warning templates
-            threshold = self.get_appropriate_threshold(reverse_streak, False)
-            message_field = "message_english_translation" if language == 'en' else "message_arabic_translation"
-            text_field = "text_used_english" if language == 'en' else "text_used_arabic"
-            
-            template = self.db_manager.get_message_template(
-                template_type="warning",
-                threshold_days=threshold
-            )
-            
-            if not template:
-                # Fallback if no template found
+            elif reverse_streak > 0:
                 if language == 'en':
                     return f"{header}Don't worry! It's been {reverse_streak} days since your last check-in. You can start again today! 📖"
                 else:
                     return f"{header}لا تقلق! لقد مرت {reverse_streak} أيام منذ آخر تسجيل دخول. يمكنك البدء مرة أخرى اليوم! 📖"
-            
-            return f"{header}{template[text_field]}\n\n{template[message_field]}"
-            
-        else:
-            # Default message for new users
-            if language == 'en':
-                return f"{header}Ready to start your Quran reading journey? Send a checkmark when you're done! 📚"
             else:
-                return f"{header}هل أنت مستعد لبدء رحلة قراءة القرآن؟ أرسل علامة اختيار عندما تنتهي! 📚" 
+                if language == 'en':
+                    return f"{header}Ready to start your Quran reading journey? Send a checkmark when you're done! 📚"
+                else:
+                    return f"{header}هل أنت مستعد لبدء رحلة قراءة القرآن؟ أرسل علامة اختيار عندما تنتهي! 📚" 
