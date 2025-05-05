@@ -13,6 +13,7 @@ from .config import (
     DAILY_REMINDERS_MESSAGES_TABLE
 )
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -204,12 +205,24 @@ class DatabaseManager:
                 
                 if response.data and response.data[0].get("reminder_times"):
                     reminder_times = response.data[0]["reminder_times"]
+                    # Handle the case when reminder_times is a string
+                    if isinstance(reminder_times, str):
+                        try:
+                            # Try to convert from JSON string if it's serialized
+                            reminder_times = json.loads(reminder_times)
+                        except json.JSONDecodeError:
+                            # If not a valid JSON, treat as a single item list
+                            reminder_times = [reminder_times]
                 else:
                     reminder_times = []
             except Exception as e:
                 # If column doesn't exist, create a new empty list
                 logger.warning(f"Error retrieving reminder_times: {str(e)}. Using empty list.")
                 reminder_times = []
+            
+            # Ensure reminder_times is a list
+            if not isinstance(reminder_times, list):
+                reminder_times = [reminder_times] if reminder_times else []
             
             # Convert reminder_time to string (HH:MM) format for storage
             time_str = reminder_time.strftime("%H:%M")
@@ -247,10 +260,25 @@ class DatabaseManager:
                 # Skip users without reminder_times field or with empty reminder_times
                 if not user.get("reminder_times"):
                     continue
-                    
+                
+                reminder_times_data = user.get("reminder_times")
+                
+                # Handle case when reminder_times is a string
+                if isinstance(reminder_times_data, str):
+                    try:
+                        # Try to convert from JSON string if it's serialized
+                        reminder_times_data = json.loads(reminder_times_data)
+                    except json.JSONDecodeError:
+                        # If not a valid JSON, treat as a single item list
+                        reminder_times_data = [reminder_times_data]
+                
+                # Ensure it's a list
+                if not isinstance(reminder_times_data, list):
+                    reminder_times_data = [reminder_times_data] if reminder_times_data else []
+                
                 # Parse reminder_times from strings to time objects
                 reminder_times = []
-                for time_str in user.get("reminder_times", []):
+                for time_str in reminder_times_data:
                     try:
                         hour, minute = map(int, time_str.split(":"))
                         reminder_times.append(time(hour, minute))
@@ -290,6 +318,13 @@ class DatabaseManager:
         """
         try:
             user = self.get_or_create_user(telegram_id, "")
+            
+            # Ensure reminder_times is a list
+            if not isinstance(reminder_times, list):
+                if reminder_times:
+                    reminder_times = [reminder_times]
+                else:
+                    reminder_times = []
             
             # Try updating user record with new reminder times
             try:
