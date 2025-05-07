@@ -197,7 +197,7 @@ class DatabaseManager:
         user = self.get_or_create_user(telegram_id, "")
         reminder = {
             "user_id": user["id"],  # This now correctly points to the user ID
-            "reminder_time": reminder_time.isoformat(),
+            "reminder_time": reminder_time.strftime("%H:%M"),  # Store in HH:MM format for consistency
             "sent_at": datetime.utcnow().isoformat()
         }
         self.supabase.table(REMINDERS_TABLE).insert(reminder).execute()

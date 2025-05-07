@@ -5,9 +5,11 @@ from datetime import datetime, time
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 from telegram.constants import ParseMode
-from utils.utils import get_user_language, get_user_datetime
-from reminders.reminder_manager import ReminderManager
-from database.db_manager import DatabaseManager
+from bot.utils.utils import get_user_language, get_user_datetime
+from bot.reminders.reminder_manager import ReminderManager
+from bot.database.db_manager import DatabaseManager
+from bot.streak_counter.streak_counter import StreakCounter
+from bot.database.config import USERS_TABLE
 
 logger = logging.getLogger(__name__)
 
@@ -338,6 +340,7 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send reminder messages to users who have scheduled reminders."""
     job = context.job
     user_id = job.data.get("user_id")
+    reminder_time = job.data.get("reminder_time")
     
     if not user_id:
         logger.error("No user_id in job data")
@@ -356,9 +359,13 @@ async def send_reminder(context: ContextTypes.DEFAULT_TYPE) -> None:
             parse_mode=ParseMode.MARKDOWN
         )
         
-        # Mark reminder as sent
-        current_time = datetime.now().time()
-        reminder_manager.mark_reminder_sent(user_id, current_time)
+        # Mark reminder as sent using the correct reminder time
+        if reminder_time:
+            reminder_manager.mark_reminder_sent(user_id, reminder_time)
+        else:
+            # Fallback to current time if no specific time was provided
+            current_time = datetime.now().time()
+            reminder_manager.mark_reminder_sent(user_id, current_time)
         
     except Exception as e:
         logger.error(f"Error sending reminder to user {user_id}: {str(e)}")
@@ -378,6 +385,13 @@ def register_reminder_handlers(application):
             check_and_send_reminders,
             interval=60,  # Check every minute
             first=10      # Start 10 seconds after bot startup
+        )
+        
+        # Schedule an end-of-day check for users who missed their checkmark
+        application.job_queue.run_repeating(
+            check_end_of_day_missed_checkmarks,
+            interval=3600,  # Check every hour
+            first=60       # Start 60 seconds after bot startup
         )
     else:
         logger.warning("JobQueue not available. Reminder jobs will not run automatically.")
@@ -410,21 +424,40 @@ async def check_and_send_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                     current_datetime = datetime.now(timezone)
                     current_time = current_datetime.time()
                     
-                    # Check if any reminder time matches the current time (within 1 minute)
+                    # Compare only hours and minutes, not seconds
+                    current_hour_min = (current_time.hour, current_time.minute)
+                    
+                    # Check if any reminder time matches the current time (exactly on the hour and minute)
                     for reminder_time in reminder_times:
-                        current_minutes = current_time.hour * 60 + current_time.minute
-                        reminder_minutes = reminder_time.hour * 60 + reminder_time.minute
+                        reminder_hour_min = (reminder_time.hour, reminder_time.minute)
                         
-                        if abs(current_minutes - reminder_minutes) <= 1:
+                        if current_hour_min == reminder_hour_min:
                             logger.info(f"Scheduling reminder for user {user_id} at {reminder_time.strftime('%H:%M')}")
                             
-                            # Schedule a job to send the reminder
-                            context.job_queue.run_once(
-                                send_reminder,
-                                0,  # Run immediately
-                                data={"user_id": user_id}
-                            )
-                            break
+                            # Check if we've already sent this reminder today
+                            sent_reminders = db_manager.get_today_reminders(user_id)
+                            already_sent = False
+                            
+                            for sent in sent_reminders:
+                                sent_time_str = sent.get("reminder_time", "")
+                                if sent_time_str:
+                                    try:
+                                        sent_h, sent_m = map(int, sent_time_str.split(":"))
+                                        if (sent_h, sent_m) == reminder_hour_min:
+                                            already_sent = True
+                                            break
+                                    except:
+                                        pass
+                            
+                            if not already_sent:
+                                # Schedule a job to send the reminder
+                                context.job_queue.run_once(
+                                    send_reminder,
+                                    0,  # Run immediately
+                                    data={"user_id": user_id, "reminder_time": reminder_time}
+                                )
+                            else:
+                                logger.debug(f"Reminder for user {user_id} at {reminder_time.strftime('%H:%M')} already sent today")
                 except pytz.exceptions.UnknownTimeZoneError:
                     logger.error(f"Invalid timezone '{timezone_str}' for user {user_id}")
                 except Exception as e:
@@ -433,4 +466,156 @@ async def check_and_send_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                 logger.error(f"Error processing user in reminder check: {str(e)}", exc_info=True)
                 
     except Exception as e:
-        logger.error(f"Error in check_and_send_reminders: {str(e)}", exc_info=True) 
+        logger.error(f"Error in check_and_send_reminders: {str(e)}", exc_info=True)
+
+async def check_end_of_day_missed_checkmarks(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Check at the end of the day for users who haven't submitted a checkmark.
+    Send them a notification about breaking their streak.
+    """
+    try:
+        logger.debug("Running end-of-day missed checkmark check")
+        
+        # Get all users from database
+        db_manager = DatabaseManager()
+        
+        # Get all users from the database
+        response = db_manager.supabase.table(USERS_TABLE).select("*").execute()
+        users = response.data
+        
+        for user in users:
+            try:
+                user_id = user.get("telegram_id")
+                timezone_str = user.get("timezone", "America/Los_Angeles")
+                
+                if not user_id:
+                    continue
+                
+                # Get user's local time
+                try:
+                    timezone = pytz.timezone(timezone_str)
+                    user_local_time = datetime.now(timezone)
+                    
+                    # Only proceed if it's end of day (between 21:00 and 22:00)
+                    if not (21 <= user_local_time.hour < 22):
+                        continue
+                    
+                    # Create streak counter for this user
+                    streak_counter = StreakCounter(telegram_id=user_id)
+                    
+                    # Check if user already has a checkmark today
+                    if streak_counter.has_checkmark_today():
+                        continue
+                    
+                    # User doesn't have a checkmark today and it's end of day
+                    # Get their streak information
+                    user_data = db_manager.get_or_create_user(user_id, "")
+                    current_streak = user_data.get("current_streak", 0)
+                    
+                    # Only send notification if they had a streak to break or need a warning
+                    # Get user's reverse streak (days without activity)
+                    reverse_streak = user_data.get("reverse_streak", 0)
+                    
+                    # Get appropriate threshold for warning message
+                    # If they're about to break a streak, it's day 0 of missing (treat as day 1)
+                    days_missing = reverse_streak if reverse_streak > 0 else 1
+                    
+                    # Get user's language
+                    lang = get_user_language(user_id)
+                    
+                    # Get warning template based on threshold days
+                    threshold = streak_counter.get_appropriate_threshold(days_missing, False)
+                    template = db_manager.get_message_template(template_type="warning", threshold_days=threshold)
+                    
+                    message = ""
+                    if template:
+                        # Get the appropriate text fields
+                        header = ""
+                        text = ""
+                        message_text = ""
+                        
+                        if current_streak > 0:
+                            # Create header for users with active streak
+                            if lang == "ar":
+                                header = f"⚠️ *تنبيه انقطاع القراءة*\n\n"
+                            else:
+                                header = f"⚠️ *Streak Break Alert*\n\n"
+                        else:
+                            # Create header for users without active streak
+                            if lang == "ar":
+                                header = f"📖 *تذكير القراءة اليومية*\n\n"
+                            else:
+                                header = f"📖 *Daily Reading Reminder*\n\n"
+                        
+                        # Get text field
+                        if lang == 'ar':
+                            text = template.get("text_used_arabic", "")
+                        else:
+                            text = template.get("text_used_english", "")
+                        
+                        # Get message field
+                        if lang == 'ar':
+                            message_text = template.get("message_arabic_translation", "")
+                        else:
+                            message_text = template.get("message_english_translation", "")
+                        
+                        # If text field is empty, use a fallback
+                        if not text:
+                            if lang == 'ar':
+                                text = "لم تقرأ القرآن اليوم بعد!"
+                            else:
+                                text = "You haven't read the Quran today yet!"
+                        
+                        # Create the full message
+                        message = f"{header}{text}"
+                        
+                        # Add the message_text if it exists
+                        if message_text:
+                            message += f"\n\n{message_text}"
+                            
+                        # Add a call to action based on their current streak
+                        if current_streak > 0:
+                            if lang == 'ar':
+                                message += f"\n\nسلسلة قراءتك المستمرة لمدة {current_streak} أيام ستنقطع عند منتصف الليل. ما زال لديك وقت للقراءة وإرسال علامة اختيار للحفاظ على سلسلتك! ✅"
+                            else:
+                                message += f"\n\nYour {current_streak}-day streak will break at midnight. You still have time to read and send a checkmark to maintain your streak! ✅"
+                    else:
+                        # Fallback message if no template found
+                        if current_streak > 0:
+                            if lang == "ar":
+                                message = (f"⚠️ *تنبيه انقطاع القراءة*\n\n"
+                                          f"لقد انقطعت عن القراءة اليوم! سلسلة قراءتك المستمرة لمدة {current_streak} أيام ستنقطع عند منتصف الليل.\n\n"
+                                          f"ما زال لديك وقت للقراءة وإرسال علامة اختيار للحفاظ على سلسلتك! 📖")
+                            else:
+                                message = (f"⚠️ *Streak Break Alert*\n\n"
+                                          f"You haven't read the Quran today! Your {current_streak}-day streak will break at midnight.\n\n"
+                                          f"You still have time to read and send a checkmark to maintain your streak! 📖")
+                        elif reverse_streak > 0:
+                            if lang == "ar":
+                                message = (f"📖 *تذكير القراءة اليومية*\n\n"
+                                          f"لقد مرت {reverse_streak} أيام منذ آخر قراءة للقرآن. استأنف رحلتك اليوم!")
+                            else:
+                                message = (f"📖 *Daily Reading Reminder*\n\n"
+                                          f"It's been {reverse_streak} days since your last Quran reading. Resume your journey today!")
+                        else:
+                            # Skip users who don't have an active streak and haven't missed days yet
+                            continue
+                    
+                    # Send the message
+                    await context.bot.send_message(
+                        chat_id=user_id,
+                        text=message,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    
+                    logger.info(f"Sent end-of-day warning to user {user_id} with streak={current_streak}, reverse_streak={reverse_streak}")
+                    
+                except pytz.exceptions.UnknownTimeZoneError:
+                    logger.error(f"Invalid timezone '{timezone_str}' for user {user_id}")
+                except Exception as e:
+                    logger.error(f"Error processing end-of-day check for user {user_id}: {str(e)}", exc_info=True)
+            except Exception as e:
+                logger.error(f"Error processing user in end-of-day check: {str(e)}", exc_info=True)
+                
+    except Exception as e:
+        logger.error(f"Error in check_end_of_day_missed_checkmarks: {str(e)}", exc_info=True) 
