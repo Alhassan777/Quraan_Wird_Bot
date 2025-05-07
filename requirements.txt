@@ -1,5 +1,5 @@
-python-telegram-bot
-supabase
+python-telegram-bot[job-queue]>=20.0
+supabase>=1.0.3
 python-dotenv
 pytz
 pytest
@@ -9,3 +9,8 @@ psycopg2-binary
 pydantic
 requests
 typing_extensions
+google-generativeai
+numpy
+Levenshtein
+langid
+openai

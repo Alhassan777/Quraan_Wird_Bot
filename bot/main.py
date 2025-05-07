@@ -13,15 +13,15 @@ from telegram.ext import (
     filters
 )
 
-# Using relative imports within the bot directory
-from config.config import TELEGRAM_TOKEN, LOG_LEVEL
-from handlers.start import start, language_selection
-from handlers.help import help_command
-from handlers.tafsir import handle_text, handle_photo
-from handlers.error import error_handler
-from handlers.streak import streak_command
-from handlers.reminder import register_reminder_handlers
-from database.db_manager import DatabaseManager
+# Using absolute imports for clarity
+from bot.config.config import TELEGRAM_TOKEN, LOG_LEVEL
+from bot.handlers.start import start, language_selection
+from bot.handlers.help import help_command
+from bot.handlers.tafsir import handle_text, handle_photo
+from bot.handlers.error import error_handler
+from bot.handlers.streak import streak_command
+from bot.handlers.reminder import register_reminder_handlers
+from bot.database.db_manager import DatabaseManager
 
 # Setup logging
 logging.basicConfig(
@@ -112,18 +112,23 @@ def main() -> None:
         # Remove potential https:// prefix for the webhook URL
         if app_name.startswith('https://'):
             app_name = app_name[8:]
+        
+        # Make sure to drop any existing webhook to prevent conflicts
+        logger.info("Removing any existing webhook to prevent conflicts...")
+        application.bot.delete_webhook()
             
         # Set webhook using the RAILWAY_STATIC_URL
         application.run_webhook(
             listen="0.0.0.0",
             port=port,
             url_path=TELEGRAM_TOKEN,
-            webhook_url=f"https://{app_name}/{TELEGRAM_TOKEN}"
+            webhook_url=f"https://{app_name}/{TELEGRAM_TOKEN}",
+            drop_pending_updates=True  # Add this to ignore pending updates
         )
         logger.info(f"Started webhook on port {port}")
     else:
         # Use polling for local development
-        application.run_polling()
+        application.run_polling(drop_pending_updates=True)  # Add this to start with a clean state
         logger.info("Started polling")
 
 if __name__ == '__main__':
