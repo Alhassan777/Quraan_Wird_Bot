@@ -107,13 +107,17 @@ async def setreminder_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             if lang == "ar":
                 await update.message.reply_text(
                     "يرجى تحديد وقت التذكير بتنسيق 24 ساعة. مثال: `/setreminder 08:00`\n\n"
-                    "يمكنك إعداد عدة تذكيرات عن طريق استخدام الأمر عدة مرات.",
+                    "يمكنك إعداد عدة تذكيرات باستخدام الأمر عدة مرات.\n"
+                    "لعرض التذكيرات الحالية، استخدم `/listreminders`\n"
+                    "لحذف تذكير، استخدم `/deletereminder 08:00`",
                     parse_mode=ParseMode.MARKDOWN
                 )
             else:
                 await update.message.reply_text(
                     "Please specify the reminder time in 24-hour format. Example: `/setreminder 08:00`\n\n"
-                    "You can set multiple reminders by using the command multiple times.",
+                    "You can set multiple reminders by using the command multiple times.\n"
+                    "To view your current reminders, use `/listreminders`\n"
+                    "To delete a reminder, use `/deletereminder 08:00`",
                     parse_mode=ParseMode.MARKDOWN
                 )
             return
@@ -174,13 +178,21 @@ async def setreminder_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Escape any special markdown characters in timezone_str to prevent parsing errors
         escaped_timezone = timezone_str.replace('_', '\\_')
         
+        # Get all current reminders for display
+        reminders = reminder_manager.get_reminders_for_user(user_id)
+        reminders_count = len(reminders)
+        
         response_message = ""
         if lang == "ar":
-            response_message = (f"✅ تم إعداد تذكير يومي في الساعة `{time_str}` بتوقيت {escaped_timezone}.\n\n"
-                f"سوف أذكرك بقراءة القرآن يوميًا في هذا الوقت.")
+            response_message = (f"✅ تم إضافة تذكير يومي في الساعة `{time_str}` بتوقيت {escaped_timezone}.\n\n"
+                f"لديك الآن {reminders_count} {('تذكيرات' if reminders_count > 1 else 'تذكير')}.\n\n"
+                f"• استخدم `/listreminders` لعرض جميع التذكيرات الخاصة بك\n"
+                f"• استخدم `/deletereminder {time_str}` لحذف هذا التذكير")
         else:
-            response_message = (f"✅ Daily reminder set for `{time_str}` {escaped_timezone} time.\n\n"
-                f"I'll remind you to read the Quran daily at this time.")
+            response_message = (f"✅ Daily reminder added for `{time_str}` {escaped_timezone} time.\n\n"
+                f"You now have {reminders_count} {('reminders' if reminders_count > 1 else 'reminder')}.\n\n"
+                f"• Use `/listreminders` to view all your reminders\n"
+                f"• Use `/deletereminder {time_str}` to delete this reminder")
                 
         logger.info(f"Successfully set reminder at {time_str} for user {user_id}")
         await update.message.reply_text(response_message, parse_mode=ParseMode.MARKDOWN)
@@ -219,8 +231,13 @@ async def listreminders_command(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(response_message, parse_mode=ParseMode.MARKDOWN)
             return
         
-        # Create a list of reminders
-        reminders_list = "\n".join([f"• `{time_str}`" for time_str in sorted(reminders)])
+        # Create a list of reminders with delete instructions
+        reminders_list = ""
+        for i, time_str in enumerate(sorted(reminders), 1):
+            if lang == "ar":
+                reminders_list += f"{i}. `{time_str}` - لحذف هذا التذكير: `/deletereminder {time_str}`\n"
+            else:
+                reminders_list += f"{i}. `{time_str}` - To delete: `/deletereminder {time_str}`\n"
         
         # Escape any special markdown characters in timezone_str to prevent parsing errors
         escaped_timezone = timezone_str.replace('_', '\\_')
@@ -229,13 +246,15 @@ async def listreminders_command(update: Update, context: ContextTypes.DEFAULT_TY
         if lang == "ar":
             response_message = (f"⏰ *التذكيرات اليومية الخاصة بك*\n\n"
                 f"المنطقة الزمنية: `{escaped_timezone}`\n\n"
-                f"{reminders_list}\n\n"
-                f"لحذف تذكير، استخدم الأمر `/deletereminder HH:MM`")
+                f"{reminders_list}\n"
+                f"• لإضافة تذكيرات جديدة، استخدم `/setreminder HH:MM`\n"
+                f"• يمكنك ضبط عدة تذكيرات في أوقات مختلفة")
         else:
             response_message = (f"⏰ *Your Daily Reminders*\n\n"
                 f"Timezone: `{escaped_timezone}`\n\n"
-                f"{reminders_list}\n\n"
-                f"To delete a reminder, use `/deletereminder HH:MM`")
+                f"{reminders_list}\n"
+                f"• To add new reminders, use `/setreminder HH:MM`\n"
+                f"• You can set multiple reminders at different times")
                 
         logger.info(f"Successfully listed reminders for user {user_id}")
         await update.message.reply_text(response_message, parse_mode=ParseMode.MARKDOWN)
@@ -323,11 +342,25 @@ async def deletereminder_command(update: Update, context: ContextTypes.DEFAULT_T
             await update.message.reply_text(warning_msg, parse_mode=ParseMode.MARKDOWN)
             return
         
+        # Get the remaining reminders count for display
+        remaining_reminders = reminder_manager.get_reminders_for_user(user_id)
+        remaining_count = len(remaining_reminders)
+        
         response_message = ""
         if lang == "ar":
             response_message = f"✅ تم حذف التذكير في الساعة `{time_str}`."
+            if remaining_count > 0:
+                response_message += f"\n\nلا يزال لديك {remaining_count} {('تذكيرات' if remaining_count > 1 else 'تذكير')}."
+                response_message += f"\nاستخدم `/listreminders` لعرض التذكيرات المتبقية."
+            else:
+                response_message += "\n\nليس لديك أي تذكيرات متبقية. استخدم `/setreminder HH:MM` لإضافة تذكير جديد."
         else:
             response_message = f"✅ Reminder at `{time_str}` has been deleted."
+            if remaining_count > 0:
+                response_message += f"\n\nYou still have {remaining_count} {('reminders' if remaining_count > 1 else 'reminder')}."
+                response_message += f"\nUse `/listreminders` to view your remaining reminders."
+            else:
+                response_message += "\n\nYou don't have any reminders left. Use `/setreminder HH:MM` to add a new one."
             
         logger.info(f"Successfully deleted reminder at {time_str} for user {user_id}")
         await update.message.reply_text(response_message, parse_mode=ParseMode.MARKDOWN)
