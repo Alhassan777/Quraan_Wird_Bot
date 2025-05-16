@@ -74,6 +74,16 @@ class StreakCounter:
             if 'T' in last_check_in:
                 last_check_in = last_check_in.split('+')[0].split('Z')[0]
             last_check_time = datetime.fromisoformat(last_check_in)
+            
+            # Check if more than 1 full day (24 hours) has passed since the last check-in
+            time_since_last_check = current_time - last_check_time
+            if time_since_last_check > timedelta(days=1):
+                # If more than 1 day has passed with no check-in, reset the streak and 
+                # increase the reverse streak by the number of days missed
+                days_missed = time_since_last_check.days  # No cap on missed days
+                if days_missed > 0:
+                    current_streak = 0
+                    reverse_streak = days_missed
         else:
             last_check_time = None
         
@@ -108,13 +118,11 @@ class StreakCounter:
             time_diff = current_time - last_check_time
             
             if time_diff > timedelta(hours=24):
-                # Reset streaks if more than 24 hours have passed
+                # Streak already reset in the earlier check, now handle the current action
                 if has_checkmark:
                     current_streak = 1
                     reverse_streak = 0
-                else:
-                    current_streak = 0
-                    reverse_streak = 1
+                # If no checkmark, the reverse streak was already updated above
             else:
                 # Update streaks based on checkmark presence
                 if has_checkmark:
@@ -124,8 +132,9 @@ class StreakCounter:
                         current_streak += 1
                     reverse_streak = 0
                 else:
-                    current_streak = 0
-                    reverse_streak += 1
+                    # If no checkmark today and within 24 hours, don't change the streak
+                    # but don't increment it either
+                    pass
 
         # Update user's streak in database
         self.db_manager.update_user_streak(self.telegram_id, current_streak, reverse_streak)
