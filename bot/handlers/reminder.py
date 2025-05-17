@@ -483,12 +483,17 @@ async def check_and_send_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                                         pass
                             
                             if not already_sent:
-                                # Schedule a job to send the reminder
-                                context.job_queue.run_once(
-                                    send_reminder,
-                                    0,  # Run immediately
-                                    data={"user_id": user_id, "reminder_time": reminder_time}
-                                )
+                                # Check if user has already sent a checkmark today
+                                streak_counter = StreakCounter(telegram_id=user_id)
+                                if streak_counter.has_checkmark_today():
+                                    logger.debug(f"User {user_id} already checked in today, skipping reminder")
+                                else:
+                                    # Schedule a job to send the reminder
+                                    context.job_queue.run_once(
+                                        send_reminder,
+                                        0,  # Run immediately
+                                        data={"user_id": user_id, "reminder_time": reminder_time}
+                                    )
                             else:
                                 logger.debug(f"Reminder for user {user_id} at {reminder_time.strftime('%H:%M')} already sent today")
                 except pytz.exceptions.UnknownTimeZoneError:
