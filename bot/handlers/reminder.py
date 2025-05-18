@@ -484,11 +484,23 @@ async def check_and_send_reminders(context: ContextTypes.DEFAULT_TYPE) -> None:
                             
                             if not already_sent:
                                 # Check if user has already sent a checkmark today
-                                streak_counter = StreakCounter(telegram_id=user_id)
-                                if streak_counter.has_checkmark_today():
-                                    logger.debug(f"User {user_id} already checked in today, skipping reminder")
-                                else:
-                                    # Schedule a job to send the reminder
+                                try:
+                                    streak_counter = StreakCounter(telegram_id=user_id)
+                                    has_checkmark = streak_counter.has_checkmark_today()
+                                    if has_checkmark:
+                                        logger.debug(f"User {user_id} already checked in today, skipping reminder")
+                                    else:
+                                        logger.debug(f"User {user_id} has not checked in today, sending reminder")
+                                        # Schedule a job to send the reminder
+                                        context.job_queue.run_once(
+                                            send_reminder,
+                                            0,  # Run immediately
+                                            data={"user_id": user_id, "reminder_time": reminder_time}
+                                        )
+                                except Exception as e:
+                                    logger.error(f"Error checking if user {user_id} has checkmark today: {str(e)}")
+                                    # If there's an error checking for checkmarks, send the reminder anyway
+                                    logger.debug(f"Sending reminder to user {user_id} despite checkmark check error")
                                     context.job_queue.run_once(
                                         send_reminder,
                                         0,  # Run immediately
